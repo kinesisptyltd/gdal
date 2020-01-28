@@ -66,7 +66,7 @@ impl<'a> Feature<'a> {
                 Ok(FieldValue::IntegerValue(rv as i32))
             },
             OGRFieldType::OFTInteger64 => {
-                let rv = unsafe { gdal_sys::OGR_F_GetFieldAsInteger(self.c_feature, field_id) };
+                let rv = unsafe { gdal_sys::OGR_F_GetFieldAsInteger64(self.c_feature, field_id) };
                 Ok(FieldValue::Integer64Value(rv as i64))
             },
             _ => Err(ErrorKind::UnhandledFieldType{field_type, method_name: "OGR_Fld_GetType"})?
