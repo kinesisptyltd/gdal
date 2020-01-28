@@ -65,6 +65,10 @@ impl<'a> Feature<'a> {
                 let rv = unsafe { gdal_sys::OGR_F_GetFieldAsInteger(self.c_feature, field_id) };
                 Ok(FieldValue::IntegerValue(rv as i32))
             },
+            OGRFieldType::OFTInteger64 => {
+                let rv = unsafe { gdal_sys::OGR_F_GetFieldAsInteger(self.c_feature, field_id) };
+                Ok(FieldValue::Integer64Value(rv as i64))
+            },
             _ => Err(ErrorKind::UnhandledFieldType{field_type, method_name: "OGR_Fld_GetType"})?
         }
     }
@@ -141,11 +145,22 @@ impl<'a> Feature<'a> {
         Ok(())
     }
 
+    pub fn set_field_integer64(&self, field_name: &str, value: i64) -> Result<()> {
+        let c_str_field_name = CString::new(field_name)?;
+        let idx = unsafe { gdal_sys::OGR_F_GetFieldIndex(self.c_feature, c_str_field_name.as_ptr())};
+        if idx == -1 {
+            Err(ErrorKind::InvalidFieldName{field_name: field_name.to_string(), method_name: "OGR_F_GetFieldIndex"})?;
+        }
+        unsafe { gdal_sys::OGR_F_SetFieldInteger(self.c_feature, idx, value as c_int) };
+        Ok(())
+    }
+
     pub fn set_field(&self, field_name: &str,  value: &FieldValue) -> Result<()> {
           match *value {
              FieldValue::RealValue(value) => self.set_field_double(field_name, value),
              FieldValue::StringValue(ref value) => self.set_field_string(field_name, value.as_str()),
-             FieldValue::IntegerValue(value) => self.set_field_integer(field_name, value)
+             FieldValue::IntegerValue(value) => self.set_field_integer(field_name, value),
+             FieldValue::Integer64Value(value) => self.set_field_integer64(field_name, value),
          }
      }
 
@@ -168,6 +183,7 @@ impl<'a> Drop for Feature<'a> {
 
 pub enum FieldValue {
     IntegerValue(i32),
+    Integer64Value(i64),
     StringValue(String),
     RealValue(f64),
 }
