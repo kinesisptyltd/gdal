@@ -34,6 +34,8 @@ pub enum ErrorKind {
     },
     #[fail(display = "Can't cast to f64")]
     CastToF64Error,
+    #[fail(display = "Can't cast to i32")]
+    CastToI32Error,
     #[fail(display ="OGR method '{}' returned error: '{:?}'", method_name, err)]
     OgrError {
         err: OGRErr::Type,

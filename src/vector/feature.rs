@@ -1,4 +1,8 @@
-use std::ffi::CString;
+use std::{
+    ffi::CString,
+    slice::from_raw_parts,
+    convert::TryInto,
+};
 use libc::{c_double, c_int};
 use vector::Defn;
 use utils::{_string, _last_null_pointer_err};
@@ -68,6 +72,21 @@ impl<'a> Feature<'a> {
             OGRFieldType::OFTInteger64 => {
                 let rv = unsafe { gdal_sys::OGR_F_GetFieldAsInteger64(self.c_feature, field_id) };
                 Ok(FieldValue::Integer64Value(rv as i64))
+            },
+            OGRFieldType::OFTBinary => {
+                unsafe { 
+                    let mut pn_bytes: i32 = 0;
+                    let pn_bytes_ptr: *mut i32 = &mut pn_bytes;
+                    gdal_sys::OGR_F_GetFieldAsBinary(self.c_feature, field_id, pn_bytes_ptr)
+                        .as_ref()
+                        .map(|x| FieldValue::Binary(from_raw_parts(x, pn_bytes as usize).to_vec()))
+                        .ok_or(
+                            ErrorKind::NullPointer {
+                                method_name: "OGR_F_GetFieldAsBinary",
+                                msg: format!("field name: {}", name)
+                            }.into()
+                        )
+                }
             },
             _ => Err(ErrorKind::UnhandledFieldType{field_type, method_name: "OGR_Fld_GetType"})?
         }
@@ -155,12 +174,27 @@ impl<'a> Feature<'a> {
         Ok(())
     }
 
+    pub fn set_field_binary(&self, field_name: &str, value: &Vec<u8>) -> Result<()> {
+        let c_str_field_name = CString::new(field_name)?;
+        let idx = unsafe { gdal_sys::OGR_F_GetFieldIndex(self.c_feature, c_str_field_name.as_ptr())};
+        if idx == -1 {
+            Err(ErrorKind::InvalidFieldName{field_name: field_name.to_string(), method_name: "OGR_F_GetFieldIndex"})?;
+        }
+        let mut v = value.clone();
+        let n_bytes = value.len()
+            .try_into()
+            .map_err(|_| ErrorKind::CastToI32Error)?;
+        unsafe { gdal_sys::OGR_F_SetFieldBinary(self.c_feature, idx, n_bytes, v.as_mut_ptr()) };
+        Ok(())
+    }
+
     pub fn set_field(&self, field_name: &str,  value: &FieldValue) -> Result<()> {
           match *value {
              FieldValue::RealValue(value) => self.set_field_double(field_name, value),
              FieldValue::StringValue(ref value) => self.set_field_string(field_name, value.as_str()),
              FieldValue::IntegerValue(value) => self.set_field_integer(field_name, value),
              FieldValue::Integer64Value(value) => self.set_field_integer64(field_name, value),
+             FieldValue::Binary(ref value) => self.set_field_binary(field_name, value),
          }
      }
 
@@ -186,6 +220,7 @@ pub enum FieldValue {
     Integer64Value(i64),
     StringValue(String),
     RealValue(f64),
+    Binary(Vec<u8>)
 }
 
 
