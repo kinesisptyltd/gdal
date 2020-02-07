@@ -69,6 +69,21 @@ impl<'a> Feature<'a> {
                 let rv = unsafe { gdal_sys::OGR_F_GetFieldAsInteger(self.c_feature, field_id) };
                 Ok(FieldValue::IntegerValue(rv as i32))
             },
+            OGRFieldType::OFTIntegerList => {
+                unsafe {
+                    let mut pn_bytes: i32 = 0;
+                    let pn_bytes_ptr: *mut i32 = &mut pn_bytes;
+                    gdal_sys::OGR_F_GetFieldAsIntegerList(self.c_feature, field_id, pn_bytes_ptr)
+                        .as_ref()
+                        .map(|x| FieldValue::IntegerList(from_raw_parts(x, pn_bytes as usize).to_vec()))
+                        .ok_or(
+                            ErrorKind::NullPointer {
+                                method_name: "OGR_F_GetFieldAsIntegerList",
+                                msg: format!("field name: {}", name)
+                            }.into()
+                        )
+                }
+            },
             OGRFieldType::OFTInteger64 => {
                 let rv = unsafe { gdal_sys::OGR_F_GetFieldAsInteger64(self.c_feature, field_id) };
                 Ok(FieldValue::Integer64Value(rv as i64))
@@ -164,6 +179,20 @@ impl<'a> Feature<'a> {
         Ok(())
     }
 
+    pub fn set_field_integer_list(&self, field_name: &str, value: &Vec<i32>) -> Result<()> {
+        let c_str_field_name = CString::new(field_name)?;
+        let idx = unsafe { gdal_sys::OGR_F_GetFieldIndex(self.c_feature, c_str_field_name.as_ptr())};
+        if idx == -1 {
+            Err(ErrorKind::InvalidFieldName{field_name: field_name.to_string(), method_name: "OGR_F_GetFieldIndex"})?;
+        }
+        let mut v = value.clone();
+        let n_bytes = value.len()
+            .try_into()
+            .map_err(|_| ErrorKind::CastToI32Error)?;
+        unsafe { gdal_sys::OGR_F_SetFieldIntegerList(self.c_feature, idx, n_bytes, v.as_mut_ptr()) };
+        Ok(())
+    }
+
     pub fn set_field_integer64(&self, field_name: &str, value: i64) -> Result<()> {
         let c_str_field_name = CString::new(field_name)?;
         let idx = unsafe { gdal_sys::OGR_F_GetFieldIndex(self.c_feature, c_str_field_name.as_ptr())};
@@ -193,6 +222,7 @@ impl<'a> Feature<'a> {
              FieldValue::RealValue(value) => self.set_field_double(field_name, value),
              FieldValue::StringValue(ref value) => self.set_field_string(field_name, value.as_str()),
              FieldValue::IntegerValue(value) => self.set_field_integer(field_name, value),
+             FieldValue::IntegerList(ref value) => self.set_field_integer_list(field_name, value),
              FieldValue::Integer64Value(value) => self.set_field_integer64(field_name, value),
              FieldValue::Binary(ref value) => self.set_field_binary(field_name, value),
          }
@@ -217,6 +247,7 @@ impl<'a> Drop for Feature<'a> {
 
 pub enum FieldValue {
     IntegerValue(i32),
+    IntegerList(Vec<i32>),
     Integer64Value(i64),
     StringValue(String),
     RealValue(f64),
