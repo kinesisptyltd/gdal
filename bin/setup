@@ -1,0 +1,56 @@
+#!/bin/sh -eu
+# bin/setup — bootstrap the gdal Rust bindings project for development.
+# Idempotent: safe to run multiple times.
+
+cd "$(dirname "$0")/.."
+
+echo "==> Checking for Rust toolchain (cargo)"
+if ! command -v cargo >/dev/null 2>&1; then
+    if [ -x "$HOME/.cargo/bin/cargo" ]; then
+        # shellcheck disable=SC1090
+        . "$HOME/.cargo/env"
+    else
+        echo "cargo not found. Install Rust from https://rustup.rs/ and re-run." >&2
+        echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh" >&2
+        exit 1
+    fi
+fi
+
+echo "==> Checking for GDAL native library"
+gdal_ok=0
+if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists gdal; then
+    gdal_ok=1
+    echo "    found gdal $(pkg-config --modversion gdal) via pkg-config"
+elif command -v gdal-config >/dev/null 2>&1; then
+    gdal_ok=1
+    echo "    found gdal $(gdal-config --version) via gdal-config"
+fi
+
+if [ "$gdal_ok" -eq 0 ]; then
+    echo "GDAL development library not found." >&2
+    uname_s=$(uname -s)
+    case "$uname_s" in
+        Darwin)
+            echo "Install with: brew install gdal pkg-config" >&2
+            ;;
+        Linux)
+            if [ -f /etc/debian_version ]; then
+                echo "Install with: sudo apt-get install -y libgdal-dev pkg-config build-essential" >&2
+            else
+                echo "Install libgdal-dev (or equivalent) and pkg-config via your package manager." >&2
+            fi
+            ;;
+        *)
+            echo "Install the GDAL development headers and pkg-config for your platform." >&2
+            ;;
+    esac
+    exit 1
+fi
+
+echo "==> Fetching cargo dependencies"
+cargo fetch
+
+echo "==> Building workspace"
+cargo build
+
+echo "==> Setup complete. Try: cargo test"
